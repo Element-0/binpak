@@ -15,6 +15,62 @@ iterator varargTypes(list: NimNode): tuple[name, impl: NimNode] =
     let impl = getTypeImpl(name)
     yield (name: name, impl: impl)
 
+# A workaround nim bug, can also improve compile performance
+type ImmList[T] = ref object
+  idx: int
+  cur: T
+  next: ImmList[T]
+
+proc len[T](self: ImmList[T]): int =
+  if self == nil:
+    0
+  else:
+    self.idx
+
+proc prepend[T](self: ImmList[T], single: T): ImmList[T] =
+  result = new ImmList[T]
+  result.cur = single
+  result.next = self
+  result.idx = self.len + 1
+
+proc prepend[T](self: ImmList[T], multi: ImmList[T]): ImmList[T] =
+  if multi == nil:
+    return self
+  var tmp = new ImmList[T]
+  result = tmp
+  result.idx = self.len + multi.len
+  tmp.cur = multi.cur
+  var cursor = multi.next
+  while cursor != nil:
+    tmp.next = new ImmList[T]
+    tmp = tmp.next
+    tmp.cur = cursor.cur
+    cursor = cursor.next
+  tmp.next = self
+
+proc prepend[T](self: ImmList[T], multi: seq[T]): ImmList[T] =
+  if multi.len == 0:
+    return self
+  var tmp = new ImmList[T]
+  result = tmp
+  result.idx = self.len + multi.len
+  tmp.cur = multi[0]
+  for idx in 1..<multi.len:
+    tmp.next = new ImmList[T]
+    tmp = tmp.next
+    tmp.cur = multi[idx]
+  tmp.next = self
+
+proc toImmList[T](multi: seq[T]): ImmList[T] = prepend[T](nil, multi)
+
+iterator pairs[T](self: ImmList[T]): tuple[key: int; val: T] =
+  var tmp = self
+  var idx = 0
+  while tmp != nil:
+    yield (key: idx, val: tmp.cur)
+    idx += 1
+    tmp = tmp.next
+
 macro genBinPak*(a: varargs[typed]{nkSym}): untyped =
   result = newStmtList()
   let io = ident "io"
@@ -26,16 +82,19 @@ macro genBinPak*(a: varargs[typed]{nkSym}): untyped =
   proc genArrowExpr(right: NimNode): NimNode =
     nnkInfix.newTree(darrow, io, right)
 
-  proc processInputVariant(base: NimNode; defs: seq[NimNode]; stack: seq[tuple[local, field: NimNode]] = @[]): NimNode =
-    if defs.len == 0:
+  proc processInputVariant(base: NimNode; defs: ImmList[NimNode]; stack: ImmList[tuple[local, field: NimNode]] = nil): NimNode =
+    if defs == nil:
       let constr = nnkObjConstr.newTree(base)
-      for (local, field) in stack:
-        constr.add nnkExprColonExpr.newTree(field, local)
+      var revseq = newSeq[NimNode](stack.len)
+      for i, (local, field) in stack:
+        revseq[stack.len - i - 1] = nnkExprColonExpr.newTree(field, local)
+      for item in revseq:
+        constr.add item
       return quote do:
         `x` = `constr`
 
-    let first = defs[0]
-    let rest = defs[1..^1]
+    let first = defs.cur
+    let rest = defs.next
     case first.kind:
     of nnkIdentDefs:
       let field = first[0]
@@ -45,7 +104,7 @@ macro genBinPak*(a: varargs[typed]{nkSym}): untyped =
       result = quote do:
         var `local`: `ftyp`
         `op`
-      result.add base.processInputVariant(rest, stack & @[(local: local, field: field)])
+      result.add base.processInputVariant(rest, stack.prepend @[(local: local, field: field)])
     of nnkRecCase:
       result = newStmtList()
       let casevar = first[0]
@@ -54,18 +113,18 @@ macro genBinPak*(a: varargs[typed]{nkSym}): untyped =
       let casefixed = nskLet.genSym($casefield)
       let caseftyp = casevar[1]
       let casestmt = nnkCaseStmt.newTree(casefixed)
-      let next = stack & @[(local: casefixed, field: casefield)]
+      let next = stack.prepend @[(local: casefixed, field: casefield)]
       for caseitem in first[1..^1]:
         case caseitem.kind:
         of nnkOfBranch:
           let branch = nnkOfBranch.newTree()
           for choose in caseitem[0..^2]:
             branch.add choose
-          branch.add base.processInputVariant(caseitem[^1][0..^1] & rest, next)
+          branch.add base.processInputVariant(rest.prepend caseitem[^1][0..^1], next)
           casestmt.add branch
         of nnkElse:
           let branch = nnkElse.newTree()
-          branch.add base.processInputVariant(caseitem[0][0..^1] & rest, next)
+          branch.add base.processInputVariant(rest.prepend caseitem[0][0..^1], next)
           casestmt.add branch
         else:
           error "invalid case branch"
@@ -124,7 +183,7 @@ macro genBinPak*(a: varargs[typed]{nkSym}): untyped =
     let variant = isVariantType impl
     if variant:
       let cache = impl[2][0..^1]
-      let inpbody = processInputVariant(name, cache)
+      let inpbody = processInputVariant(name, toImmList cache)
       let outbody = processOutputVariant(cache)
       result.add quote do:
         proc `rarrow`*(`io`: BinaryInput; `x`: var `name`) = `inpbody`
