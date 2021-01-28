@@ -1,4 +1,4 @@
-import ./types
+import ./types, ./nolockstream
 
 type
   HasOp = concept l, var v
@@ -12,3 +12,14 @@ template `<~>`*[bio: static BinaryIOKind, T: HasOp](io: BinaryIO[bio], x: T) =
   elif bio == bio_output:
     mixin `<~`
     io <~ x
+
+func `<<-`*[T](desc: typedesc[T], data: string): T {.inline.} =
+  let inp = BinaryInput.init(data)
+  inp <~> result
+  if not inp.stream.atEnd():
+    raise newException(ValueError, "expect EOF")
+
+func `~>$`*[T](target: T): string {.inline.} =
+  let oup = BinaryOutput.init()
+  oup <~> target
+  oup.data()

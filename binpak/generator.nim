@@ -176,8 +176,8 @@ macro genBinPak*(a: varargs[typed]{nkSym}): untyped =
 
   for (name, impl) in varargTypes(a):
     result.add quote do:
-      proc `rarrow`*(`io`: BinaryInput; `x`: var `name`)
-      proc `larrow`*(`io`: BinaryOutput; `x`: `name`)
+      func `rarrow`*(`io`: BinaryInput; `x`: var `name`) {.inline.}
+      func `larrow`*(`io`: BinaryOutput; `x`: `name`) {.inline.}
 
   for (name, impl) in varargTypes(a):
     let variant = isVariantType impl
@@ -186,8 +186,8 @@ macro genBinPak*(a: varargs[typed]{nkSym}): untyped =
       let inpbody = processInputVariant(name, toImmList cache)
       let outbody = processOutputVariant(cache)
       result.add quote do:
-        proc `rarrow`*(`io`: BinaryInput; `x`: var `name`) = `inpbody`
-        proc `larrow`*(`io`: BinaryOutput; `x`: `name`) = `outbody`
+        func `rarrow`*(`io`: BinaryInput; `x`: var `name`) = `inpbody`
+        func `larrow`*(`io`: BinaryOutput; `x`: `name`) = `outbody`
     else:
       let xbody = newStmtList()
       for item in impl[2]:
@@ -198,6 +198,6 @@ macro genBinPak*(a: varargs[typed]{nkSym}): untyped =
           newDotExpr(x, name)
         )
       result.add quote do:
-        proc `rarrow`*(`io`: BinaryInput; `x`: var `name`) = `xbody`
-        proc `larrow`*(`io`: BinaryOutput; `x`: `name`) = `xbody`
+        func `rarrow`*(`io`: BinaryInput; `x`: var `name`) = `xbody`
+        func `larrow`*(`io`: BinaryOutput; `x`: `name`) = `xbody`
     discard

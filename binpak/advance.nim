@@ -1,18 +1,16 @@
-import std/[streams, tables]
-import ./basic, ./types, ./helper
+import std/tables
+import ./basic, ./types, ./helper, ./nolockstream
 
 proc `~>`*(io: BinaryInput, x: var string) {.inline.} =
   var len: uint
   io ~> len
   x.setLen len
   if len > 0:
-    let res = io.stream.readData(x.cstring, x.len)
-    if res != int len:
-      raise newException(EOFError, "read string failed")
+    io.stream.readBuffer(x)
 proc `<~`*(io: BinaryOutput, x: string) {.inline.} =
   io <~ uint x.len
   if x.len > 0:
-    io.stream.write(x)
+    io.stream.writeBuffer(x)
 
 proc `~>`*[T](io: BinaryInput, x: var seq[T]) {.inline.} =
   mixin `<~>`

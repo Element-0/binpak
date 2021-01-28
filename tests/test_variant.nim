@@ -1,4 +1,4 @@
-import std/[streams, unittest, tables]
+import std/[unittest, tables]
 import binpak
 
 type VariantKind = enum
@@ -23,30 +23,25 @@ genBinPak Variant
 suite "Variant Test":
   test "output int":
     let simpl = Variant(kind: vk_int, vInt: 2)
-    let xout = BinaryOutput.init()
     checkpoint "generating"
-    xout <~> simpl
+    let data = ~>$ simpl
     checkpoint "generated"
-    check xout.data == "\2\4"
+    check data == "\2\4"
   test "output string":
     let simpl = Variant(kind: vk_string, vString: "test")
-    let xout = BinaryOutput.init()
     checkpoint "generating"
-    xout <~> simpl
+    let data = ~>$ simpl
     checkpoint "generated"
-    check xout.data == "\4\4test"
+    check data == "\4\4test"
   test "output table":
     let simpl = Variant(kind: vk_map, vMap: {"hello": Variant(kind: vk_string, vString: "world")}.toTable)
-    let xout = BinaryOutput.init()
     checkpoint "generating"
-    xout <~> simpl
+    let data = ~>$ simpl
     checkpoint "generated"
-    check xout.data == "\6\1\5hello\4\5world"
+    check data == "\6\1\5hello\4\5world"
   test "parse table":
-    let xin = BinaryInput.init("\6\1\5hello\4\5world")
-    var rep = Variant(kind: vk_void)
     checkpoint "parsing"
-    xin <~> rep
+    let rep = Variant <<- "\6\1\5hello\4\5world"
     checkpoint "parsed"
     check rep.kind == vk_map
     check "hello" in rep.vMap

@@ -1,4 +1,4 @@
-import std/[streams, unittest]
+import std/unittest
 import binpak
 
 type MyEnum = enum
@@ -15,17 +15,14 @@ genBinPak MyObj
 suite "Simple Test":
   test "output":
     let simpl = MyObj(en: A, key: "test", vals: @[1, 2, 3])
-    let xout = BinaryOutput.init()
     checkpoint "generating"
-    xout <~> simpl
+    let data = ~>$ simpl
     checkpoint "generated"
-    check xout.data == "\0\4test\3\2\4\6"
+    check data == "\0\4test\3\2\4\6"
 
   test "input":
-    let xout = BinaryInput.init("\2\4test\3\2\4\6")
-    var rep: MyObj
     checkpoint "parsing"
-    xout <~> rep
+    let rep = MyObj <<- "\2\4test\3\2\4\6"
     checkpoint "parsed"
     check rep.en == B
     check rep.key == "test"
